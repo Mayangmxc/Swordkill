@@ -1,343 +1,352 @@
---// Variables
-local player = game:GetService("Players").LocalPlayer
-local runService = game:GetService("RunService")
-local players = game:GetService("Players")
+-- ======================================
+-- SCRIPT COMPLET TOUT-EN-UN
+-- GUI + COMMANDES + REACH + HANG + VOID
+-- ======================================
 
--- Config
-local enabled = true
-local range = 8
-local ignoreFriends = true
-local targetVictim = nil
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 
--- SafeList (jamais attaqués)
-local safeList = {
-    ["Mayan_legameur12"] = true,
-    ["Mayan_legameur14"] = true,
-}
+local LocalPlayer = Players.LocalPlayer
+local Config = { Prefix = ":" }
+local Commands = {}
+local AdminList = {}
+local LoopHangActive = false
+local LoopHangTargets = {}
+local HanggedPlayers = {}
+local CharacterAddedConnections = {}
+local LoopVoidActive = false
+local VoidTargets = {}
 
--- Supprimer ancienne GUI
-if player.PlayerGui:FindFirstChild("KillAuraGUI") then
-    player.PlayerGui.KillAuraGUI:Destroy()
+-- ===========================
+-- GUI RAYFIELD
+-- ===========================
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local Window = Rayfield:CreateWindow({
+    Name = "Swordkill v2😎",
+    LoadingTitle = "Build and battle☑️",
+    LoadingSubtitle = "by Mayan_legameur12",
+    ConfigurationSaving = { Enabled = true, FolderName = nil, FileName = "Digital Hub" },
+    Discord = { Enabled = true, Invite = "wk2xtM8H", RememberJoins = true },
+    KeySystem = false
+})
+
+-- Notification via Rayfield
+local function notify(msg, dur)
+    dur = dur or 3
+    pcall(function()
+        Rayfield:Notify({
+            Title = "Commande",
+            Content = tostring(msg),
+            Duration = dur
+        })
+    end)
 end
 
---// GUI principale
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "KillAuraGUI"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player:FindFirstChildOfClass("PlayerGui")
+-- ===========================
+-- COMMANDES
+-- ===========================
+local function addCommand(names, desc, fn)
+    for _, name in ipairs(names) do
+        Commands[name:lower()] = {fn = fn, desc = desc}
+    end
+end
 
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 250, 0, 270)
-mainFrame.Position = UDim2.new(0.5, -125, 0.2, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-mainFrame.BackgroundTransparency = 0.2
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true
-mainFrame.Parent = screenGui
-Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+local function hasAdmin(player)
+    return table.find(AdminList, player.UserId) ~= nil
+end
 
--- Titre principal
-local title = Instance.new("TextLabel", mainFrame)
-title.Size = UDim2.new(1, -30, 0, 30)
-title.Position = UDim2.new(0, 0, 0, 0)
-title.BackgroundTransparency = 1
-title.Text = "⚔ Kill Aura"
-title.Font = Enum.Font.GothamBold
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.TextScaled = true
-
--- Sous-titre (créateur)
-local subtitle = Instance.new("TextLabel", mainFrame)
-subtitle.Size = UDim2.new(1, -30, 0, 20)
-subtitle.Position = UDim2.new(0, 0, 0, 30)
-subtitle.BackgroundTransparency = 1
-subtitle.Text = "Created by Mayan_legameur12"
-subtitle.Font = Enum.Font.Gotham
-subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
-subtitle.TextScaled = true
-
--- Bouton fermer principal
-local closeBtn = Instance.new("TextButton", mainFrame)
-closeBtn.Size = UDim2.new(0, 30, 0, 30)
-closeBtn.Position = UDim2.new(1, -30, 0, 0)
-closeBtn.Text = "❌"
-closeBtn.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-closeBtn.TextScaled = true
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeBtn.Font = Enum.Font.GothamBold
-Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-
-local openBtn = Instance.new("TextButton", screenGui)
-openBtn.Size = UDim2.new(0, 60, 0, 60)
-openBtn.Position = UDim2.new(0, 20, 1, -80)
-openBtn.Text = "📂"
-openBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-openBtn.TextScaled = true
-openBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-openBtn.Font = Enum.Font.GothamBold
-openBtn.Visible = false
-openBtn.Active = true
-openBtn.Draggable = true
-Instance.new("UICorner", openBtn).CornerRadius = UDim.new(1, 0)
-
--- Rayon
-local rangeBox = Instance.new("TextBox", mainFrame)
-rangeBox.Size = UDim2.new(1, -20, 0, 30)
-rangeBox.Position = UDim2.new(0, 10, 0, 60)
-rangeBox.PlaceholderText = "Rayon (1 à 1e17)"
-rangeBox.Text = tostring(range)
-rangeBox.TextScaled = true
-rangeBox.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-rangeBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-rangeBox.Font = Enum.Font.Gotham
-Instance.new("UICorner", rangeBox).CornerRadius = UDim.new(0, 8)
-
--- ON/OFF
-local toggleBtn = Instance.new("TextButton", mainFrame)
-toggleBtn.Size = UDim2.new(0, 100, 0, 30)
-toggleBtn.Position = UDim2.new(0, 10, 0, 100)
-toggleBtn.Text = "ON"
-toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 0)
-toggleBtn.TextScaled = true
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.Font = Enum.Font.GothamBold
-Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
-
--- AutoKill Button (à côté du ON/OFF)
-local autoKillBtn = Instance.new("TextButton", mainFrame)
-autoKillBtn.Size = UDim2.new(0, 100, 0, 30)
-autoKillBtn.Position = UDim2.new(0, 130, 0, 100)
-autoKillBtn.Text = "AutoKill"
-autoKillBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-autoKillBtn.TextScaled = true
-autoKillBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-autoKillBtn.Font = Enum.Font.GothamBold
-Instance.new("UICorner", autoKillBtn).CornerRadius = UDim.new(0, 8)
-
--- Ignore friends
-local friendBtn = Instance.new("TextButton", mainFrame)
-friendBtn.Size = UDim2.new(1, -20, 0, 30)
-friendBtn.Position = UDim2.new(0, 10, 0, 140)
-friendBtn.Text = "👥 Ignore Friends: ON"
-friendBtn.BackgroundColor3 = Color3.fromRGB(0, 85, 170)
-friendBtn.TextScaled = true
-friendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-friendBtn.Font = Enum.Font.GothamBold
-Instance.new("UICorner", friendBtn).CornerRadius = UDim.new(0, 8)
-
--- Choisir victime
-local chooseBtn = Instance.new("TextButton", mainFrame)
-chooseBtn.Size = UDim2.new(1, -20, 0, 30)
-chooseBtn.Position = UDim2.new(0, 10, 0, 180)
-chooseBtn.Text = "🎯 Choisir Victime"
-chooseBtn.BackgroundColor3 = Color3.fromRGB(120, 85, 0)
-chooseBtn.TextScaled = true
-chooseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-chooseBtn.Font = Enum.Font.GothamBold
-Instance.new("UICorner", chooseBtn).CornerRadius = UDim.new(0, 8)
-
--- Bouton Discord
-local discordBtn = Instance.new("TextButton", mainFrame)
-discordBtn.Size = UDim2.new(1, -20, 0, 30)
-discordBtn.Position = UDim2.new(0, 10, 0, 220)
-discordBtn.Text = "💬 Rejoindre le Discord"
-discordBtn.BackgroundColor3 = Color3.fromRGB(85, 110, 230)
-discordBtn.TextScaled = true
-discordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-discordBtn.Font = Enum.Font.GothamBold
-Instance.new("UICorner", discordBtn).CornerRadius = UDim.new(0, 8)
-
-discordBtn.MouseButton1Click:Connect(function()
-    setclipboard("https://discord.gg/nehc227wW")
-end)
-
--- Frame Choisir Victime
-local victimFrame = Instance.new("Frame", screenGui)
-victimFrame.Size = UDim2.new(0, 200, 0, 300)
-victimFrame.Position = UDim2.new(0.5, -100, 0.5, -150)
-victimFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-victimFrame.Visible = false
-victimFrame.Active = true
-victimFrame.Draggable = true
-Instance.new("UICorner", victimFrame).CornerRadius = UDim.new(0, 12)
-
--- Bouton fermer victime
-local victimClose = Instance.new("TextButton", victimFrame)
-victimClose.Size = UDim2.new(0, 30, 0, 30)
-victimClose.Position = UDim2.new(1, -30, 0, 0)
-victimClose.Text = "❌"
-victimClose.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-victimClose.TextScaled = true
-victimClose.TextColor3 = Color3.fromRGB(255, 255, 255)
-victimClose.Font = Enum.Font.GothamBold
-Instance.new("UICorner", victimClose).CornerRadius = UDim.new(0, 6)
-
-victimClose.MouseButton1Click:Connect(function()
-    victimFrame.Visible = false
-end)
-
-local victimTitle = Instance.new("TextLabel", victimFrame)
-victimTitle.Size = UDim2.new(1, -30, 0, 30)
-victimTitle.Text = "🎯 Choisir Victime"
-victimTitle.BackgroundTransparency = 1
-victimTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-victimTitle.Font = Enum.Font.GothamBold
-victimTitle.TextScaled = true
-
-local scroll = Instance.new("ScrollingFrame", victimFrame)
-scroll.Size = UDim2.new(1, -10, 1, -70)
-scroll.Position = UDim2.new(0, 5, 0, 35)
-scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-scroll.ScrollBarThickness = 6
-scroll.BackgroundTransparency = 1
-
-local infoText = Instance.new("TextLabel", victimFrame)
-infoText.Size = UDim2.new(1, -10, 0, 40)
-infoText.Position = UDim2.new(0, 5, 1, -40)
-infoText.BackgroundTransparency = 1
-infoText.Text = "For it to work press once the username\nPress again to revert to everyone"
-infoText.TextColor3 = Color3.fromRGB(255, 255, 255)
-infoText.Font = Enum.Font.Gotham
-infoText.TextScaled = true
-
--- Fonction refresh joueurs
-local function refreshPlayers()
-    scroll:ClearAllChildren()
-    local y = 0
-    for _, plr in ipairs(players:GetPlayers()) do
-        if plr ~= player then
-            local btn = Instance.new("TextButton", scroll)
-            btn.Size = UDim2.new(1, -10, 0, 30)
-            btn.Position = UDim2.new(0, 5, 0, y)
-            btn.Text = plr.Name
-            btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.Font = Enum.Font.Gotham
-            btn.TextScaled = true
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-
-            btn.MouseButton1Click:Connect(function()
-                if targetVictim == plr.Name then
-                    targetVictim = nil
-                    btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-                else
-                    targetVictim = plr.Name
-                    for _, child in ipairs(scroll:GetChildren()) do
-                        if child:IsA("TextButton") then
-                            child.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-                        end
-                    end
-                    btn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-                end
-            end)
-            y += 35
+local function getTargets(arg)
+    local targets = {}
+    arg = arg:lower()
+    if arg == "me" then
+        table.insert(targets, LocalPlayer)
+    elseif arg == "all" or arg == "others" then
+        for _, p in pairs(Players:GetPlayers()) do
+            if arg == "all" or (arg == "others" and p ~= LocalPlayer) then
+                table.insert(targets, p)
+            end
+        end
+    else
+        for _, p in pairs(Players:GetPlayers()) do
+            if p.Name:lower():find(arg) or p.DisplayName:lower():find(arg) then
+                table.insert(targets, p)
+            end
         end
     end
-    scroll.CanvasSize = UDim2.new(0, 0, 0, y)
+    return targets
 end
 
-players.PlayerAdded:Connect(refreshPlayers)
-players.PlayerRemoving:Connect(refreshPlayers)
+local function parseAndRun(messageText, fromPlayer)
+    if type(messageText) ~= "string" then return end
+    if messageText:sub(1, #Config.Prefix) ~= Config.Prefix then return end
+    if fromPlayer ~= LocalPlayer and not hasAdmin(fromPlayer) then return end
 
--- Frame AutoKill
-local autoKillFrame = Instance.new("Frame", screenGui)
-autoKillFrame.Size = UDim2.new(0, 250, 0, 120)
-autoKillFrame.Position = UDim2.new(0.5, -125, 0.5, -60)
-autoKillFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-autoKillFrame.Visible = false
-autoKillFrame.Active = true
-autoKillFrame.Draggable = true
-Instance.new("UICorner", autoKillFrame).CornerRadius = UDim.new(0, 12)
+    local payload = messageText:sub(#Config.Prefix + 1)
+    local parts = {}
+    for w in payload:gmatch("%S+") do table.insert(parts, w) end
+    if #parts == 0 then parts[1] = payload end
 
-local akTitle = Instance.new("TextLabel", autoKillFrame)
-akTitle.Size = UDim2.new(1, -30, 0, 40)
-akTitle.BackgroundTransparency = 1
-akTitle.Text = "⚔️ AutoKill"
-akTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-akTitle.Font = Enum.Font.GothamBold
-akTitle.TextScaled = true
+    local cmd = table.remove(parts, 1):lower()
+    if not Commands[cmd] then
+        notify("Commande inconnue : " .. cmd)
+        return
+    end
 
-local akClose = Instance.new("TextButton", autoKillFrame)
-akClose.Size = UDim2.new(0, 30, 0, 30)
-akClose.Position = UDim2.new(1, -30, 0, 0)
-akClose.Text = "❌"
-akClose.BackgroundColor3 = Color3.fromRGB(170, 0, 0)
-akClose.TextScaled = true
-akClose.TextColor3 = Color3.fromRGB(255, 255, 255)
-akClose.Font = Enum.Font.GothamBold
-Instance.new("UICorner", akClose).CornerRadius = UDim.new(0, 6)
+    local success, err = pcall(function() Commands[cmd].fn(parts, fromPlayer) end)
+    if not success then
+        warn("Erreur commande: " .. tostring(err))
+        notify("Erreur exécution.")
+    end
+end
 
-akClose.MouseButton1Click:Connect(function()
-    autoKillFrame.Visible = false
-end)
-
-local coming = Instance.new("TextLabel", autoKillFrame)
-coming.Size = UDim2.new(1, 0, 0, 60)
-coming.Position = UDim2.new(0, 0, 0, 45)
-coming.BackgroundTransparency = 1
-coming.Text = "Coming soon 😝"
-coming.TextColor3 = Color3.fromRGB(255, 255, 255)
-coming.Font = Enum.Font.Gotham
-coming.TextScaled = true
-
--- Toggle frames
-chooseBtn.MouseButton1Click:Connect(function()
-    victimFrame.Visible = not victimFrame.Visible
-    if victimFrame.Visible then
-        refreshPlayers()
+-- ===========================
+-- COMMANDES ADMIN
+-- ===========================
+addCommand({"admin"}, "Donner l'admin à un joueur", function(args, fromPlayer)
+    if fromPlayer ~= LocalPlayer then notify("Vous n'avez pas la permission.") return end
+    local targetArg = args[1]
+    if not targetArg then notify("Usage : :admin <nom>") return end
+    local targets = getTargets(targetArg)
+    if #targets == 0 then notify("Aucun joueur trouvé pour '" .. targetArg .. "'") return end
+    for _, player in ipairs(targets) do
+        if player == LocalPlayer then
+            notify("Vous avez déjà tous les droits !")
+        elseif hasAdmin(player) then
+            notify(player.Name .. " a déjà l'admin")
+        else
+            table.insert(AdminList, player.UserId)
+            notify(player.Name .. " a reçu l'admin ✅")
+        end
     end
 end)
 
-autoKillBtn.MouseButton1Click:Connect(function()
-    autoKillFrame.Visible = not autoKillFrame.Visible
-end)
-
--- ON/OFF logic
-toggleBtn.MouseButton1Click:Connect(function()
-    enabled = not enabled
-    toggleBtn.Text = enabled and "ON" or "OFF"
-    toggleBtn.BackgroundColor3 = enabled and Color3.fromRGB(0, 120, 0) or Color3.fromRGB(120, 0, 0)
-end)
-
-friendBtn.MouseButton1Click:Connect(function()
-    ignoreFriends = not ignoreFriends
-    friendBtn.Text = ignoreFriends and "👥 Ignore Friends: ON" or "👥 Ignore Friends: OFF"
-end)
-
-rangeBox.FocusLost:Connect(function()
-    local newRange = tonumber(rangeBox.Text)
-    if newRange and newRange >= 1 and newRange <= 1e17 then
-        range = newRange
-    else
-        rangeBox.Text = tostring(range)
+addCommand({"unadmin"}, "Retirer l'admin à un joueur", function(args, fromPlayer)
+    if fromPlayer ~= LocalPlayer then notify("Vous n'avez pas la permission.") return end
+    local targetArg = args[1]
+    if not targetArg then notify("Usage : :unadmin <nom>") return end
+    local targets = getTargets(targetArg)
+    if #targets == 0 then notify("Aucun joueur trouvé pour '" .. targetArg .. "'") return end
+    for _, player in ipairs(targets) do
+        if player == LocalPlayer then
+            notify("Vous ne pouvez pas vous retirer l'admin !")
+        else
+            local index = table.find(AdminList, player.UserId)
+            if not index then
+                notify(player.Name .. " n'a pas l'admin")
+            else
+                table.remove(AdminList, index)
+                notify(player.Name .. " a perdu l'admin ❌")
+            end
+        end
     end
 end)
 
-closeBtn.MouseButton1Click:Connect(function()
-    mainFrame.Visible = false
-    openBtn.Visible = true
+addCommand({"admins", "adminlist"}, "Voir la liste des admins", function(args, fromPlayer)
+    if fromPlayer ~= LocalPlayer then return end
+    if #AdminList == 0 then notify("Aucun admin actuellement") return end
+    local adminNames = {}
+    for _, userId in ipairs(AdminList) do
+        local player = Players:GetPlayerByUserId(userId)
+        if player then table.insert(adminNames, player.Name) end
+    end
+    notify("Admins: " .. table.concat(adminNames, ", "), 5)
 end)
 
-openBtn.MouseButton1Click:Connect(function()
-    mainFrame.Visible = true
-    openBtn.Visible = false
+-- ===========================
+-- HANG / LOOPHANG
+-- ===========================
+local function getPlate()
+    local Plates = Workspace:FindFirstChild("Plates")
+    if not Plates then return nil end
+    for _, Plate in pairs(Plates:GetChildren()) do
+        if Plate:FindFirstChild("Owner") and Plate.Owner.Value == LocalPlayer then
+            return Plate:FindFirstChild("Plate")
+        end
+    end
+    return nil
+end
+
+local function hangPlayer(player)
+    if not player or not player.Character or not player.Character.PrimaryPart then return false end
+    local StampAsset = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("StampAsset")
+    local LPlate = getPlate()
+    if not StampAsset or not LPlate then return false end
+    local success = pcall(function()
+        StampAsset:InvokeServer(
+            41324945,
+            LPlate.CFrame - Vector3.new(0, 2.5, 0),
+            "{99ab22df-ca29-4143-a2fd-0a1b79db78c2}",
+            {player.Character.PrimaryPart},
+            0
+        )
+    end)
+    return success
+end
+
+local function setupLoopHangForPlayer(player)
+    if CharacterAddedConnections[player.UserId] then CharacterAddedConnections[player.UserId]:Disconnect() end
+    if player.Character then task.wait(0.5) if hangPlayer(player) then HanggedPlayers[player.UserId] = true notify(player.Name .. " a été hang 🔒") end end
+    CharacterAddedConnections[player.UserId] = player.CharacterAdded:Connect(function(character)
+        task.wait(0.5)
+        if LoopHangActive and table.find(LoopHangTargets, player) then
+            if hangPlayer(player) then HanggedPlayers[player.UserId] = true notify(player.Name .. " re-hang après respawn 🔒") end
+        end
+    end)
+end
+
+addCommand({"hang"}, "Appliquer le hang", function(args, fromPlayer)
+    local targetArg = args[1]
+    if not targetArg then notify("Usage : :hang <me|nom|all|others>") return end
+    local targets = getTargets(targetArg)
+    if #targets == 0 then notify("Aucun joueur trouvé pour '" .. targetArg .. "'") return end
+    local hangCount = 0
+    for _, player in ipairs(targets) do
+        if hangPlayer(player) then
+            hangCount = hangCount + 1
+            notify("Hang appliqué sur " .. player.Name)
+        end
+        task.wait(0.05)
+    end
+    if hangCount > 0 then notify("Total: " .. hangCount .. " hang(s) réussi(s)") end
 end)
 
--- Kill Aura loop
-runService.RenderStepped:Connect(function()
-    if not enabled then return end
-    for _, plr in ipairs(players:GetPlayers()) do
-        if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-            if safeList[plr.Name] then continue end
-            if ignoreFriends and player:IsFriendsWith(plr.UserId) then continue end
-            if targetVictim and plr.Name ~= targetVictim then continue end
-            local v = plr.Character
-            if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and player:DistanceFromCharacter(v.HumanoidRootPart.Position) <= range then
-                local tool = player.Character and player.Character:FindFirstChildOfClass("Tool")
-                if tool and tool:FindFirstChild("Handle") then
+addCommand({"loophang"}, "Activer le loop hang", function(args)
+    local targetArg = args[1]
+    if not targetArg then notify("Usage : :loophang <me|nom|all|others>") return end
+    local targets = getTargets(targetArg)
+    if #targets == 0 then notify("Aucun joueur trouvé pour '" .. targetArg .. "'") return end
+    LoopHangTargets = targets
+    LoopHangActive = true
+    for _, player in ipairs(targets) do setupLoopHangForPlayer(player) end
+    notify("Loop hang activé sur " .. #targets .. " cible(s) 🔄")
+end)
+
+addCommand({"unloophang"}, "Désactiver le loop hang", function()
+    LoopHangActive = false
+    LoopHangTargets = {}
+    HanggedPlayers = {}
+    for _, conn in pairs(CharacterAddedConnections) do conn:Disconnect() end
+    CharacterAddedConnections = {}
+    notify("Loop hang désactivé ❌")
+end)
+
+-- ===========================
+-- VOID / LOOPVOID
+-- ===========================
+local function voidPlayer(player)
+    if not player or not player.Character or not player.Character.PrimaryPart then return false end
+    local StampAsset = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("StampAsset")
+    local LPlate = getPlate()
+    if not StampAsset or not LPlate then return false end
+    local success = pcall(function()
+        StampAsset:InvokeServer(
+            41324945,
+            LPlate.CFrame - Vector3.new(0, 9e9, 0),
+            "{99ab22df-ca29-4143-a2fd-0a1b79db78c2}",
+            {player.Character.PrimaryPart},
+            0
+        )
+    end)
+    return success
+end
+
+addCommand({"void"}, "Void un joueur une fois", function(args)
+    local targetArg = args[1]
+    if not targetArg then notify("Usage : :void <me|nom|all|others>") return end
+    local targets = getTargets(targetArg)
+    local voidCount = 0
+    for _, player in ipairs(targets) do
+        if voidPlayer(player) then
+            voidCount = voidCount + 1
+            notify("Void appliqué sur " .. player.Name)
+        end
+        task.wait(0.05)
+    end
+    if voidCount > 0 then notify("Total: " .. voidCount .. " void(s) réussi(s)") end
+end)
+
+addCommand({"loopvoid"}, "Activer le loop void", function(args)
+    local targetArg = args[1]
+    if not targetArg then notify("Usage : :loopvoid <me|nom|all|others>") return end
+    local targets = getTargets(targetArg)
+    VoidTargets = targets
+    LoopVoidActive = true
+    task.spawn(function()
+        while LoopVoidActive do
+            local LPlate = getPlate()
+            local StampAsset = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("StampAsset")
+            if LPlate and StampAsset then
+                for _, player in ipairs(VoidTargets) do
+                    if player and player.Character and player.Character.PrimaryPart then
+                        voidPlayer(player)
+                        task.wait(0.05)
+                    end
+                end
+            end
+            task.wait(0.2)
+        end
+    end)
+    notify("Loop void activé sur " .. #targets .. " cible(s) 🌀")
+end)
+
+addCommand({"unloopvoid"}, "Désactiver le loop void", function()
+    LoopVoidActive = false
+    VoidTargets = {}
+    notify("Loop void désactivé ❌")
+end)
+
+-- ===========================
+-- REACH SYSTEM
+-- ===========================
+local reachEnabled = false
+local reachRange = 15
+local reachConnection = nil
+local showSphere = false
+local spherePart = nil
+
+local function createSphere()
+    if spherePart then spherePart:Destroy() end
+    spherePart = Instance.new("Part")
+    spherePart.Shape = Enum.PartType.Ball
+    spherePart.Material = Enum.Material.ForceField
+    spherePart.Size = Vector3.new(reachRange*2, reachRange*2, reachRange*2)
+    spherePart.Anchored = true
+    spherePart.CanCollide = false
+    spherePart.Transparency = 0.7
+    spherePart.Color = Color3.fromRGB(0, 150, 255)
+    spherePart.Parent = workspace
+end
+
+local function updateSphere()
+    if showSphere and spherePart and LocalPlayer.Character then
+        local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if tool and tool:FindFirstChild("Handle") then
+            spherePart.CFrame = tool.Handle.CFrame
+            spherePart.Size = Vector3.new(reachRange*2, reachRange*2, reachRange*2)
+            spherePart.Transparency = 0.7
+        else
+            spherePart.Transparency = 1
+        end
+    end
+end
+
+RunService.RenderStepped:Connect(function()
+    updateSphere()
+end)
+
+local function startReach()
+    if reachConnection then return end
+    reachConnection = RunService.RenderStepped:Connect(function()
+        if not reachEnabled then return end
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if not tool then return end
+        for i, p in pairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                if (LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude <= reachRange then
                     tool:Activate()
-                    for _, part in ipairs(v:GetChildren()) do
+                    for _, part in pairs(p.Character:GetChildren()) do
                         if part:IsA("BasePart") then
                             firetouchinterest(tool.Handle, part, 0)
                             firetouchinterest(tool.Handle, part, 1)
@@ -346,5 +355,110 @@ runService.RenderStepped:Connect(function()
                 end
             end
         end
+    end)
+end
+
+local function stopReach()
+    if reachConnection then
+        reachConnection:Disconnect()
+        reachConnection = nil
     end
+end
+
+-- ===========================
+-- CHAT CONNECTION
+-- ===========================
+LocalPlayer.Chatted:Connect(function(msg) parseAndRun(msg, LocalPlayer) end)
+Players.PlayerAdded:Connect(function(player)
+    player.Chatted:Connect(function(msg) parseAndRun(msg, player) end)
 end)
+
+-- ===========================
+-- GUI MAIN
+-- ===========================
+local Tab = Window:CreateTab("Main")
+local Tab1 = Window:CreateTab("Cmds🌐")
+
+-- Input reach range
+Tab:CreateInput({
+    Name = "Reach Range",
+    PlaceholderText = "1-1000",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text)
+        local value = tonumber(Text)
+        if value and value >= 1 then
+            reachRange = value
+            notify("Reach range défini à "..value)
+            if spherePart then spherePart.Size = Vector3.new(reachRange*2, reachRange*2, reachRange*2) end
+        else notify("Valeur invalide !") end
+    end
+})
+
+-- Toggle reach
+Tab:CreateToggle({
+    Name = "Enable Reach",
+    CurrentValue = false,
+    Callback = function(Value)
+        reachEnabled = Value
+        if Value then
+            startReach()
+            notify("Reach activé")
+        else
+            stopReach()
+            notify("Reach désactivé")
+        end
+    end
+})
+
+-- Toggle sphere
+Tab:CreateToggle({
+    Name = "Show Reach Sphere",
+    CurrentValue = false,
+    Callback = function(Value)
+        showSphere = Value
+        if Value and not spherePart then createSphere() end
+        if not Value and spherePart then spherePart.Transparency = 1 end
+        notify(Value and "Sphère de reach visible" or "Sphère de reach cachée")
+    end
+})
+
+-- Player name input for commands
+local playerName = ""
+Tab1:CreateInput({
+    Name = "Player Name",
+    PlaceholderText = "Enter player name",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(Text) playerName = Text end
+})
+
+-- Buttons
+Tab1:CreateButton({
+    Name = "Give Admin",
+    Callback = function()
+        if playerName ~= "" then parseAndRun(":admin "..playerName, LocalPlayer) end
+    end
+})
+
+Tab1:CreateButton({
+    Name = "Unadmin",
+    Callback = function()
+        if playerName ~= "" then parseAndRun(":unadmin "..playerName, LocalPlayer) end
+    end
+})
+
+Tab1:CreateButton({
+    Name = "Destroy GUI",
+    Callback = function()
+        stopReach()
+        if spherePart then spherePart:Destroy() end
+        Rayfield:Destroy()
+    end
+})
+
+-- ===========================
+-- INIT
+-- ===========================
+notify("✅ Système complet chargé !")
+notify("🔨 Hang: :hang, :loophang, :unloophang")
+notify("🌀 Void: :void, :loopvoid, :unloopvoid")
+notify("👑 Admin: :admin, :unadmin, :admins")
